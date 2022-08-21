@@ -1,11 +1,38 @@
+
 const express = require('express');
 const morgan = require('morgan');
+const path=require('path')
+const rateLimit=require('express-rate-limit')
+const helmet=require('require')
+const mongoSanitize=require('express-mongo-sanitize')
+const xss= require('xss-clean')
+const hpp=require('hpp');
+const cookieParser=require('cookie-parser');
+const speakeasy = require('speakeasy');
+const compression=require('compression');
+const cors=require('cors');
+
+const AppError=require('./utils/appError');
+const globalErrorHandler=require('./controllers/errorControllers');
+const postRouter=require('./routes/postRoutes');
+const userRouter=require('./routes/userRoutes');
+
+
 
 const app = express();
+
+app.enable('trust proxy');
+
+app.use(cors());
+app.options('*', cors());
+app.use(express.static(path.join(__dirname, 'public')));
+
+app.use(helmet());
 
 if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
+
 
 const apiLimiter = rateLimit({
   max: 100,
@@ -21,24 +48,32 @@ const createAccountLimiter = rateLimit({
 });
 // ----------------
 app.post('/signup', createAccountLimiter, authController.signup);
-//-----------------
+// -----------------
 
-//Body parser
+// Body parser
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 app.use(cookieParser());
 
-//Preventing parameter pollution
-//------------------
-app.use(
-  hpp({
-    whitelist: ['', ''],
-  })
-);
-//------------------
 
-app.use('/api/v1/users', userRouter);
-app.use('/api/v1/posts', postsRouter);
+app.use(mongoSanitize());
+
+app.use(xss());
+// Preventing parameter pollution
+//------------------
+// app.use(
+//   hpp({
+//     whitelist: ['', ''],
+//   })
+// );
+// //------------------
+app.use(compression());
+
+//ROUTES
+app.get('/api/v1/').get(authController.feed);//usercontroller
+app.use('/api/v1/user', userRouter);
+app.use('/api/v1/post', postRouter);
+app.use('/api/v1/settings', authController.protected,userController.getMe);
 
 //Handling unhandled routes
 app.all('*', (req, res, next) => {
